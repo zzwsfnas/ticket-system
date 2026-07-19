@@ -1,6 +1,21 @@
+# 构建上下文排除项 —— 防止把宿主机（Windows）的 node_modules / 数据库带进镜像
+
+# 关键：排除宿主机 node_modules，避免 Windows 编译的 better-sqlite3 原生模块
+# 覆盖掉 builder 阶段在 Linux 容器内编译好的 .node 文件（否则镜像运行即崩）
 node_modules
-npm-debug.log
-.git
-*.md
+
+# 排除开发用数据库与凭据，镜像内由 Dockerfile 自建空 data 目录 + 卷挂载
 data
-data/
+.env
+
+# 排除项目杂项
+.workbuddy
+.git
+release
+*.err
+npm-debug.log*
+
+# 移动端壳工程与 CI 配置不进入镜像
+android/
+capacitor.config.json
+.github/

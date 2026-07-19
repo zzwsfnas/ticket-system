@@ -1,0 +1,32 @@
+version: '3.8'
+
+# 用法（适应用户“本地上传镜像 tar 到 FNOS Docker”的场景）：
+#   1) 在装有 Docker 的机器上构建并导出：
+#        docker build -t ticket-system:local .
+#        docker save ticket-system:local -o ticket-system.tar
+#   2) 把 ticket-system.tar 上传到 FNOS，在 Docker 图形界面“镜像 → 导入”加载；
+#      或 FNOS 终端：docker load -i ticket-system.tar
+#   3) 把本文件与 docker-compose.load.yml 放到 FNOS 上，执行：
+#        docker compose -f docker-compose.load.yml up -d
+# 注意：构建机器与 FNOS 必须是同一架构（通常都是 x86-64）；若 FNOS 是 ARM 机型，
+#       请在 FNOS 本机用 docker-compose.yml 直接 `docker compose up -d --build` 构建，
+#       避免架构不匹配。
+
+services:
+  ticket-system:
+    image: ticket-system:local
+    container_name: ticket-system
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/auth/status',r=>process.exit(r.statusCode===200?0:1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

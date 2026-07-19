@@ -1,0 +1,10 @@
+{
+  "appId": "com.bdyw.ticketsystem",
+  "appName": "变电运维五班操作票系统",
+  "webDir": "public",
+  "server": {
+    "url": "https://czp.119222.xyz",
+    "androidScheme": "https",
+    "cleartext": false
+  }
+}

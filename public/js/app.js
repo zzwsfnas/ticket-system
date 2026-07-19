@@ -430,6 +430,7 @@ function showVersionModal() {
     <div class="modal-body">
       <div class="ver-list">${rows || '<div class="ai-note">暂无版本记录</div>'}</div>
       <p class="ai-hint">版本号遵循语义化版本规范（SemVer）：小幅更新递增末位（如 V1.0.1），较大功能更新递增中位（如 V1.1.0），重大升级递增首位（如 V2.0.0）。</p>
+      <p class="ver-copyright">©2026 变电运维五班操作票系统 · 变电运维五班 · 完全实况 · 保留所有权利 · 仅供变电运维五班内部使用</p>
     </div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">关闭</button></div>
   `);
@@ -1399,6 +1400,7 @@ async function showManageModal() {
         <button class="manage-tab" onclick="switchManageTab('aiprompt')">提示词与知识库</button>
         <button class="manage-tab" onclick="switchManageTab('standards')">校验规范</button>
         <button class="manage-tab" onclick="switchManageTab('vfeedback')">校验反馈</button>
+        <button class="manage-tab" onclick="switchManageTab('apk')">APK管理</button>
       </div>
       <div id="manageTickets" class="manage-tab-content">
         <div class="manage-toolbar">
@@ -1428,6 +1430,7 @@ async function showManageModal() {
       <div id="manageAIPrompt" class="manage-tab-content" style="display:none"></div>
       <div id="manageStandards" class="manage-tab-content" style="display:none"></div>
       <div id="manageVFeedback" class="manage-tab-content" style="display:none"></div>
+      <div id="manageApk" class="manage-tab-content" style="display:none"></div>
     </div>
   `);
   const sel = document.getElementById('manageStation');
@@ -1440,7 +1443,7 @@ async function showManageModal() {
 function switchManageTab(tab) {
   document.querySelectorAll('.manage-tab').forEach(b => {
     const label = b.textContent.trim();
-    b.classList.toggle('active', (tab === 'tickets' && label.includes('批量')) || (tab === 'integrity' && label.includes('完整性')) || (tab === 'log' && label.includes('日志')) || (tab === 'ai' && label.includes('AI')) || (tab === 'aiprompt' && label.includes('提示词')) || (tab === 'standards' && label.includes('校验规范')) || (tab === 'vfeedback' && label.includes('校验反馈')));
+    b.classList.toggle('active', (tab === 'tickets' && label.includes('批量')) || (tab === 'integrity' && label.includes('完整性')) || (tab === 'log' && label.includes('日志')) || (tab === 'ai' && label.includes('AI')) || (tab === 'aiprompt' && label.includes('提示词')) || (tab === 'standards' && label.includes('校验规范')) || (tab === 'vfeedback' && label.includes('校验反馈')) || (tab === 'apk' && label.includes('APK')));
   });
   document.getElementById('manageTickets').style.display = tab === 'tickets' ? 'block' : 'none';
   document.getElementById('manageIntegrity').style.display = tab === 'integrity' ? 'block' : 'none';
@@ -1449,11 +1452,77 @@ function switchManageTab(tab) {
   document.getElementById('manageAIPrompt').style.display = tab === 'aiprompt' ? 'block' : 'none';
   document.getElementById('manageStandards').style.display = tab === 'standards' ? 'block' : 'none';
   document.getElementById('manageVFeedback').style.display = tab === 'vfeedback' ? 'block' : 'none';
+  document.getElementById('manageApk').style.display = tab === 'apk' ? 'block' : 'none';
   if (tab === 'ai') loadAIFeedback();
   if (tab === 'aiprompt') loadAIPromptTab();
   if (tab === 'standards') loadStandardsTab();
   if (tab === 'vfeedback') loadVFeedbackTab();
+  if (tab === 'apk') loadApkTab();
 }
+// ===== APK 管理（仅管理员）=====
+async function loadApkTab() {
+  const box = document.getElementById('manageApk');
+  if (!box) return;
+  try {
+    const info = await API.get('/api/apk/info');
+    const cur = info.available
+      ? '<div class="ai-note" style="margin-bottom:10px">当前安装包：<b>' + escapeHtml(info.filename) + '</b><br>版本：' + (info.version || '未填写') + ' ｜ 大小：' + (info.size ? (info.size / 1048576).toFixed(1) + ' MB' : '-') + ' ｜ 上传：' + (info.uploadedAt ? info.uploadedAt.replace('T', ' ').slice(0, 19) : '-') + (info.note ? '<br>备注：' + escapeHtml(info.note) : '') + '</div>'
+      : '<div class="ai-note">尚未上传安装包。请在下方上传 APK 文件。</div>';
+    box.innerHTML = `
+      <div class="apk-upload-box">
+        ${cur}
+        <div class="apk-form">
+          <label>APK 文件：<input type="file" id="apkFile" accept=".apk" style="margin:6px 0"></label>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <input type="text" id="apkVersion" placeholder="版本号（如 V1.0.0，可选）" style="flex:1">
+            <input type="text" id="apkNote" placeholder="备注（可选）" style="flex:1">
+          </div>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="uploadApk()">⬆ 上传安装包</button>
+            ${info.available ? '<button class="btn btn-danger btn-sm" onclick="deleteApk()">🗑 删除当前</button>' : ''}
+          </div>
+          <p class="ai-hint" style="margin-top:10px">APK 为 WebView 壳，加载本系统主域名。更新系统后打开 App 即自动最新，无需重新打包。管理员上传后，所有用户可在页面底部「📱 下载安卓App」下载安装。</p>
+        </div>
+      </div>`;
+  } catch (e) {
+    box.innerHTML = '<div class="ai-note">加载失败：' + e.message + '</div>';
+  }
+}
+function arrayBufferToBase64(buf) {
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+async function uploadApk() {
+  const f = document.getElementById('apkFile').files[0];
+  if (!f) { toast('请先选择 APK 文件', 'error'); return; }
+  if (!f.name.toLowerCase().endsWith('.apk')) { toast('请选择 .apk 文件', 'error'); return; }
+  toast('上传中...', 'info');
+  try {
+    const buf = await f.arrayBuffer();
+    const b64 = arrayBufferToBase64(buf);
+    await API.post('/api/apk/upload', { filename: f.name, data: b64, version: (document.getElementById('apkVersion') || {}).value || '', note: (document.getElementById('apkNote') || {}).value || '' });
+    toast('上传成功', 'success');
+    loadApkTab();
+  } catch (e) { toast('上传失败：' + e.message, 'error'); }
+}
+async function deleteApk() {
+  if (!confirm('确认删除当前安装包？')) return;
+  try { await API.del('/api/apk'); toast('已删除', 'success'); loadApkTab(); }
+  catch (e) { toast('删除失败：' + e.message, 'error'); }
+}
+async function refreshApkDownload() {
+  try {
+    const info = await API.get('/api/apk/info');
+    const el = document.getElementById('apkDownload');
+    if (el) el.style.display = info.available ? 'inline' : 'none';
+  } catch (_) {}
+}
+
 async function loadManageTickets(subId) {
   const list = document.getElementById('manageTicketList');
   if (!list) return;
@@ -1728,6 +1797,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await checkAuth();
   await loadSubstations();
   renderVersion();
+  refreshApkDownload();
 
   document.getElementById('stationSelect').addEventListener('change', async (e) => {
     state.currentSubstationId = e.target.value ? parseInt(e.target.value) : null;
@@ -1744,3 +1814,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target === e.currentTarget) closeModal();
   });
 });
+
+// === 主备域名故障自动切换（零成本方案：前端探测 + SW 缓存壳）===
+// 主域名穿透链路中断时，已缓存的页面壳仍能加载并自动跳转备用域名；
+// 在备用域名下持续探测主域名，恢复后自动切回。无需付费负载均衡。
+(function () {
+  const PRIMARY = 'https://czp.119222.xyz';
+  const BACKUP = 'https://cz.lzz.de5.net';
+  const cur = location.origin;
+  // 仅在主/备域名下启用；本地开发或其他环境不触发切换
+  if (cur !== PRIMARY && cur !== BACKUP) return;
+
+  const KEEP = location.pathname + location.search + location.hash;
+
+  function probe() {
+    return new Promise((resolve) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
+      fetch(PRIMARY + '/api/auth/status', { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
+        .then(() => { clearTimeout(timer); resolve(true); })
+        .catch(() => { clearTimeout(timer); resolve(false); });
+    });
+  }
+
+  if (cur === PRIMARY) {
+    let fails = 0;
+    setInterval(async () => {
+      const ok = await probe();
+      if (ok) { fails = 0; }
+      else if (++fails >= 2) { location.replace(BACKUP + KEEP); }
+    }, 15000);
+  } else if (cur === BACKUP) {
+    setInterval(async () => {
+      const ok = await probe();
+      if (ok) { location.replace(PRIMARY + KEEP); }
+    }, 30000);
+  }
+})();

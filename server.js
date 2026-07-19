@@ -20,6 +20,8 @@ const DB_PATH = path.join(DATA_DIR, 'tickets.db');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const KNOWLEDGE_DIR = path.join(DATA_DIR, 'knowledge');
 fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true });
+const APK_DIR = path.join(DATA_DIR, 'apk');
+fs.mkdirSync(APK_DIR, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
@@ -197,7 +199,16 @@ if (!pwRow) {
 }
 
 // --- Middleware ---
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '200mb' }));
+
+// PWA：manifest 与 Service Worker 需要正确的 Content-Type 才能被安装/注册
+app.get('/manifest.webmanifest', (req, res) => {
+  res.type('application/manifest+json').sendFile(path.join(PUBLIC_DIR, 'manifest.webmanifest'));
+});
+app.get('/sw.js', (req, res) => {
+  res.type('application/javascript').set('Service-Worker-Allowed', '/').sendFile(path.join(PUBLIC_DIR, 'sw.js'));
+});
+
 app.use(express.static(PUBLIC_DIR));
 app.use(session({
   secret: 'ticket-system-secret-key-2026',
@@ -1279,6 +1290,50 @@ async function validateWithAIAdvanced(taskContent, items, config, apiKey, prompt
 // --- Serve frontend ---
 app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+// ===== APK 分发（管理员上传，所有人可下载）=====
+const APK_FILE = path.join(APK_DIR, 'ticket-system.apk');
+const APK_META = path.join(APK_DIR, 'meta.json');
+function apkMeta() {
+  try { return JSON.parse(fs.readFileSync(APK_META, 'utf8')); } catch (_) { return null; }
+}
+
+app.get('/api/apk/info', (req, res) => {
+  const m = apkMeta();
+  if (!m) return res.json({ available: false });
+  res.json({ available: true, filename: m.filename, version: m.version || '', size: m.size || null, uploadedAt: m.uploadedAt, note: m.note || '' });
+});
+
+app.get('/api/apk/download', (req, res) => {
+  if (!fs.existsSync(APK_FILE)) return res.status(404).json({ error: '暂无安装包' });
+  res.type('application/vnd.android.package-archive');
+  res.set('Content-Disposition', 'attachment; filename="ticket-system.apk"');
+  res.sendFile(APK_FILE);
+});
+
+app.post('/api/apk/upload', requireEdit, async (req, res) => {
+  try {
+    const { filename, data, version, note } = req.body || {};
+    if (!data) return res.status(400).json({ error: '缺少文件数据' });
+    let buf;
+    try { buf = Buffer.from(data, 'base64'); } catch (e) { return res.status(400).json({ error: '文件数据无效' }); }
+    if (buf.length > 200 * 1024 * 1024) return res.status(400).json({ error: '文件过大（上限 200MB）' });
+    fs.writeFileSync(APK_FILE, buf);
+    const meta = { filename: filename || 'ticket-system.apk', version: version || '', note: note || '', size: buf.length, uploadedAt: new Date().toISOString() };
+    fs.writeFileSync(APK_META, JSON.stringify(meta, null, 2));
+    audit('APK_UPLOAD', '管理员上传了安卓安装包' + (version ? '（' + version + '）' : ''));
+    res.json({ ok: true, meta });
+  } catch (e) { res.status(500).json({ error: '上传失败：' + e.message }); }
+});
+
+app.delete('/api/apk', requireEdit, (req, res) => {
+  try {
+    if (fs.existsSync(APK_FILE)) fs.unlinkSync(APK_FILE);
+    if (fs.existsSync(APK_META)) fs.unlinkSync(APK_META);
+    audit('APK_DELETE', '管理员删除了安卓安装包');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: '删除失败：' + e.message }); }
 });
 
 // --- Start (端口占用自动递增，最多尝试10个端口) ---

@@ -6,6 +6,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # 固定镜像名，便于在飞牛「本地镜像」中一眼找到（否则默认为 <目录名>_ticket-system）
+    image: ticket-system:latest
     container_name: ticket-system
     restart: unless-stopped
     ports:

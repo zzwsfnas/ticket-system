@@ -1,0 +1,26 @@
+{
+  "name": "变电运维五班操作票系统",
+  "short_name": "操作票系统",
+  "description": "变电运维五班操作票典型票管理与智能审核系统",
+  "start_url": "https://czp.119222.xyz/",
+  "scope": "https://czp.119222.xyz/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "zh-CN",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
