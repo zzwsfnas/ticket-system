@@ -1,0 +1,27 @@
+version: '3.8'
+
+# 从 GitHub Container Registry (GHCR) 拉取已构建好的镜像，无需本机构建。
+# 用法：
+#   1) cp .env.example .env
+#   2) 编辑 .env，设置 IMAGE=ghcr.io/你的GitHub用户名/ticket-system:latest
+#   3) docker compose -f docker-compose.ghcr.yml pull
+#   4) docker compose -f docker-compose.ghcr.yml up -d
+services:
+  ticket-system:
+    image: ${IMAGE:?请在 .env 中设置 IMAGE=ghcr.io/你的GitHub用户名/ticket-system:latest}
+    container_name: ticket-system
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # 持久化 SQLite 数据库到 NAS/主机目录（拉取新镜像/更新不影响数据）
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/auth/status',r=>process.exit(r.statusCode===200?0:1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
