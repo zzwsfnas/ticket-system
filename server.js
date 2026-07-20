@@ -152,7 +152,9 @@ db.exec(`
       number_format: 'arabic',                 // arabic=阿拉伯数字编号 / chinese=中文数字编号 / none=不校验
       forbidden_words: '和闸,闸刀,傍路,线络,接电线,合入,拉和,验电笔,合阐,拉阐,刀阐,确在和位',
       required_verbs: '拉开,合上,检查,确认,装设,拆除,投入,退出,切换,验明,推上,拉至,断开,悬挂,取下,装上,记录,汇报,测量,核对,调整,充电,送电,解除,恢复,解锁,闭锁',
-      banned_punct: '',                        // 不应出现的标点字符，逗号分隔
+      banned_punct: '',
+      required_steps: '',
+      paired_verbs: '合上|拉开,投入|退出,装设|拆除,悬挂|取下',                        // 不应出现的标点字符，逗号分隔
       notes: '默认规范：编号使用阿拉伯数字；禁用常见错别字；操作项目以规范动词开头。'
     });
     db.prepare("INSERT INTO settings (key, value) VALUES ('validation_standards', ?)").run(def);
@@ -653,7 +655,7 @@ app.get('/api/validation-standards', (req, res) => {
   const row = db.prepare("SELECT value FROM settings WHERE key='validation_standards'").get();
   let cfg = {};
   try { cfg = JSON.parse(row ? row.value : '{}'); } catch (e) {}
-  const defaults = { number_format: 'arabic', forbidden_words: '', required_verbs: '', banned_punct: '', notes: '' };
+  const defaults = { number_format: 'arabic', forbidden_words: '', required_verbs: '', banned_punct: '', required_steps: '', paired_verbs: '', notes: '' };
   res.json({ ...defaults, ...cfg });
 });
 app.put('/api/validation-standards', requireEdit, (req, res) => {
@@ -663,6 +665,8 @@ app.put('/api/validation-standards', requireEdit, (req, res) => {
     forbidden_words: (b.forbidden_words || '').toString().slice(0, 1000),
     required_verbs: (b.required_verbs || '').toString().slice(0, 1000),
     banned_punct: (b.banned_punct || '').toString().slice(0, 200),
+    required_steps: (b.required_steps || '').toString().slice(0, 1000),
+    paired_verbs: (b.paired_verbs || '').toString().slice(0, 1000),
     notes: (b.notes || '').toString().slice(0, 1000)
   };
   db.prepare("INSERT INTO settings (key, value) VALUES ('validation_standards', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(cfg));
@@ -826,6 +830,7 @@ function localChecks(taskContent, items, std) {
   const forbidden = (std.forbidden_words || '').split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
   const bannedPunct = (std.banned_punct || '').split('').map(s => s.trim()).filter(Boolean);
   const cnNumRe = /^[一二三四五六七八九十百千万零两]+/;
+  const stripNum = (s) => (s || '').replace(/^\d+[.、)）]\s*/, '');
   // 错漏字 / 禁用词
   items.forEach((it, idx) => {
     const i = idx + 1;
@@ -893,6 +898,41 @@ function localChecks(taskContent, items, std) {
       }
     }
   }
+  // 必含步骤关键词（可配置）
+  const reqSteps = (std.required_steps && std.required_steps.trim())
+    ? std.required_steps.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean) : [];
+  if (reqSteps.length) {
+    const big = items.map(it => (it || '').trim()).join(' ');
+    for (const kw of reqSteps) {
+      if (kw && !big.includes(kw)) issues.push({ type: 'warn', line: null, error_type: '其他', msg: `操作票缺少必备步骤关键词：“${kw}”，请确认是否已执行该步骤` });
+    }
+  }
+  // 成对动词闭合（可配置：open|close，逗号分隔）
+  const pairs = (std.paired_verbs && std.paired_verbs.trim())
+    ? std.paired_verbs.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean)
+      .map(p => { const kv = p.split(/[|｜:：]/); return kv.length === 2 ? { open: kv[0].trim(), close: kv[1].trim() } : null; })
+      .filter(Boolean) : [];
+  if (pairs.length) {
+    const allText = items.map(it => stripNum((it || '').trim())).filter(Boolean);
+    for (const pr of pairs) {
+      const hasOpen = allText.some(t => t.startsWith(pr.open));
+      const hasClose = allText.some(t => t.startsWith(pr.close));
+      if (hasOpen && !hasClose) issues.push({ type: 'warn', line: null, error_type: '其他', msg: `存在“${pr.open}”操作但缺少对应的“${pr.close}”收尾步骤，请确认是否遗漏` });
+    }
+  }
+  // 单条多动作拆分（内置逻辑）
+  items.forEach((it, idx) => {
+    const t = (it || '').trim();
+    if (!t) return;
+    const ts = stripNum(t);
+    const parts = ts.split(/[、，,；;]/).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2 && parts.filter(p => verbs.some(v => p.startsWith(v))).length >= 2) {
+      issues.push({ type: 'warn', line: idx + 1, error_type: '其他', msg: '该操作项目含多个以动词开头的子句（用“、”连接），建议拆分为多条独立操作' });
+    }
+    if (ts.includes('并') && verbs.some(v => ts.startsWith(v))) {
+      issues.push({ type: 'warn', line: idx + 1, error_type: '其他', msg: '操作项目用“并”连接多个动作，建议拆分为多条独立操作' });
+    }
+  });
   return issues;
 }
 // 解析 AI 返回（兼容「纯数组」与「{issues,conclusion,summary}」两种结构）

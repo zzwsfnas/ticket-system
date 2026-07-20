@@ -1075,6 +1075,10 @@ async function loadStandardsTab() {
         <textarea id="stdVerbs" rows="3" placeholder="如：拉开,合上,检查,确认">${escapeHtml(cfg.required_verbs || '')}</textarea>
         <label>禁用标点（逐字填写，命中即提示）</label>
         <input id="stdPunct" value="${escapeHtml(cfg.banned_punct || '')}" placeholder="如：，。、" />
+        <label>必含步骤关键词（逗号分隔，操作票必须包含；不填则不检查）</label>
+        <textarea id="stdSteps" rows="2" placeholder="如：验电,装设接地线,悬挂标识牌">${escapeHtml(cfg.required_steps || '')}</textarea>
+        <label>成对动词闭合（open|close 成对，逗号分隔；存在 open 缺少 close 收尾则提示）</label>
+        <textarea id="stdPaired" rows="2" placeholder="如：合上|拉开,投入|退出,装设|拆除,悬挂|取下">${escapeHtml(cfg.paired_verbs || '')}</textarea>
         <label>规范说明（展示用）</label>
         <textarea id="stdNotes" rows="2">${escapeHtml(cfg.notes || '')}</textarea>
         <button class="btn btn-primary btn-sm" onclick="saveStandards()">保存规范</button>
@@ -1089,6 +1093,8 @@ async function saveStandards() {
     forbidden_words: document.getElementById('stdForbidden').value,
     required_verbs: document.getElementById('stdVerbs').value,
     banned_punct: document.getElementById('stdPunct').value,
+    required_steps: document.getElementById('stdSteps').value,
+    paired_verbs: document.getElementById('stdPaired').value,
     notes: document.getElementById('stdNotes').value
   };
   try {
