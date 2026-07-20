@@ -14,7 +14,21 @@ let state = {
 let txtTicketsBuffer = [];
 
 const API = {
-  async get(url) { const r = await fetch(url, { cache: 'no-store' }); return r.json(); },
+  async get(url) {
+    // 加时间戳防止 CDN/代理缓存旧响应；cache:'no-store' 防浏览器缓存
+    const sep = url.includes('?') ? '&' : '?';
+    const r = await fetch(url + sep + '_t=' + Date.now(), { cache: 'no-store' });
+    // 容错：若服务端返回 HTML（旧代码/路由被拦截），给出明确提示而非 JSON 解析崩溃
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      const text = await r.text();
+      if (text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+        throw new Error('服务端返回了网页而非数据（可能镜像未重建或路由未生效），请访问 /api/version 确认服务端版本');
+      }
+      throw new Error('服务端返回非 JSON 数据（' + ct.slice(0, 30) + '）');
+    }
+    return r.json();
+  },
   async post(url, body) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || '请求失败'); }
@@ -1539,7 +1553,10 @@ async function loadApkTab() {
         </div>
       </div>`;
   } catch (e) {
-    box.innerHTML = '<div class="ai-note">加载失败：' + e.message + '</div>';
+    box.innerHTML = '<div class="ai-note" style="color:#d94a4a">加载失败：' + escapeHtml(e.message) + '</div>'
+      + '<div class="ai-hint" style="margin-top:8px">请在浏览器地址栏直接访问 <b>/api/version</b> 查看返回内容：'
+      '<br>• 若返回 JSON → 服务端正常，请按 Ctrl+Shift+R 硬刷新此页面'
+      '<br>• 若返回网页(HTML) → 服务端仍是旧代码，需在 FNOS 执行 <code>docker compose up -d --build</code> 重建镜像</div>';
   }
 }
 function arrayBufferToBase64(buf) {

@@ -203,6 +203,14 @@ if (!pwRow) {
 // --- Middleware ---
 app.use(express.json({ limit: '200mb' }));
 
+// 所有 /api/ 响应禁止缓存（防止 CDN/代理/浏览器缓存旧 API 响应导致前端拿到 HTML）
+app.use('/api/', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 // PWA：manifest 与 Service Worker 需要正确的 Content-Type 才能被安装/注册
 app.get('/manifest.webmanifest', (req, res) => {
   res.type('application/manifest+json').sendFile(path.join(PUBLIC_DIR, 'manifest.webmanifest'));
