@@ -217,7 +217,7 @@ function renderTaskList() {
     html += `
       <div class="task-card" data-task-id="${task.id}">
         <div class="task-header" onclick="toggleTask(${task.id})">
-          <input type="checkbox" class="task-select" data-task-id="${task.id}" onclick="event.stopPropagation()">
+          <input type="checkbox" class="task-select" value="${task.id}" data-task-id="${task.id}" onclick="event.stopPropagation()">
           <span class="arrow ${isOpen ? 'open' : ''}">▶</span>
           <span class="task-text">${highlight(task.task_content)}</span>
           <span class="task-meta">${cats} ${task.updated_at ? '更新 ' + task.updated_at.substring(0,10) : ''} ${pendingSubmissions.has(task.id) ? '<span class="chip pending">待审核</span>' : ''}</span>
@@ -622,7 +622,8 @@ function toggleSelectAll() {
 async function exportSelectedTasks() {
   const checks = Array.from(document.querySelectorAll('#taskContainer .task-select:checked'));
   if (checks.length === 0) { toast('请先勾选要导出的操作票', 'error'); return; }
-  const ids = checks.map(c => parseInt(c.value));
+  const ids = checks.map(c => parseInt(c.value || c.dataset.taskId, 10)).filter(n => !isNaN(n) && n > 0);
+  if (ids.length === 0) { toast('未获取到有效的操作票ID（checkbox缺少value属性）', 'error'); return; }
   const ts = formatTs();
   const name = `操作票典型票导出_${ts}.txt`;
   try {
