@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 需要完整历史才能创建 tag
 
       - uses: actions/setup-node@v4
         with:
@@ -53,11 +55,23 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease
 
+      - name: Create / update tag apk-latest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f apk-latest
+          git push origin apk-latest --force || true
+
       - name: Publish to GitHub Release (apk-latest)
         uses: softprops/action-gh-release@v2
         with:
-          tag: apk-latest
+          tag_name: apk-latest
           name: 安卓安装包（最新）
+          body: |
+            ## 运维五班操作票系统 安卓安装包
+            **自动构建时间：** ${{ github.run_number }}
+            **提交：** ${{ github.sha }}
+            > 下载后在安卓设备上安装即可（需允许「未知来源」应用）。
           files: android/app/build/outputs/apk/release/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
