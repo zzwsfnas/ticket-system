@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # 创建 Git 标签 + 发布 Release 需要
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +57,14 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease
 
+      - name: Find APK file
+        id: find_apk
+        working-directory: android
+        run: echo "APK_PATH=$(find . -path '*/release/*.apk' -type f | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Show APK info
+        run: echo "APK found at: ${{ steps.find_apk.outputs.APK_PATH }}"
+
       - name: Create / update tag apk-latest
         run: |
           git config user.name "github-actions[bot]"
@@ -72,6 +82,6 @@ jobs:
             **自动构建时间：** ${{ github.run_number }}
             **提交：** ${{ github.sha }}
             > 下载后在安卓设备上安装即可（需允许「未知来源」应用）。
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: ${{ steps.find_apk.outputs.APK_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
