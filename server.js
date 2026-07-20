@@ -1299,8 +1299,8 @@ app.get('*', (req, res, next) => {
 });
 
 // ===== APK 分发（管理员上传，所有人可下载）=====
-// 注意：此处版本号需与前端 app.js 中的 APP_VERSION 保持一致（当前 V1.1.0）
-const APP_VERSION = 'V1.1.0';
+// 注意：此处版本号需与前端 app.js 中的 APP_VERSION 保持一致（当前 V1.1.1）
+const APP_VERSION = 'V1.1.1';
 const APK_FILE = path.join(APK_DIR, 'ticket-system.apk');
 const APK_META = path.join(APK_DIR, 'meta.json');
 function apkMeta() {

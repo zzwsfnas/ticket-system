@@ -392,8 +392,18 @@ function escapeHtml(t) {
 //   - 较大功能更新 → 中位 +1、末位置 0，如 V1.1.0
 //   - 重大版本升级 → 首位 +1、其余置 0，如 V2.0.0
 // 每次发版：修改 APP_VERSION，并在 APP_VERSION_HISTORY 顶部新增一条记录（最新在前）。
-const APP_VERSION = 'V1.1.0';
+const APP_VERSION = 'V1.1.1';
 const APP_VERSION_HISTORY = [
+  {
+    version: 'V1.1.1',
+    date: '2026-07-20',
+    level: 'patch',
+    changes: [
+      'Service Worker 改为「网络优先」策略并部署后自动刷新：彻底解决旧缓存导致批量导出/APK 功能「看起来没修好」的问题',
+      '修复服务端 SPA 回退拦截 /api/apk/info、/api/apk/download 接口（APK 管理面板「加载失败」、主页无下载链接的根因）',
+      '主页「📱 下载安卓App」链接改为 JS 触发下载，避免 Service Worker 致 Chrome 不下载'
+    ]
+  },
   {
     version: 'V1.1.0',
     date: '2026-07-20',
