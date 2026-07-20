@@ -758,42 +758,6 @@ app.get('/api/integrity-check', requireEdit, (req, res) => {
   });
 });
 
-// --- Import existing data ---
-app.post('/api/import', requireEdit, (req, res) => {
-  const { data } = req.body; // all_typical.json format
-  if (!data || !data.stations) return res.status(400).json({ error: '无效数据格式' });
-  let imported = 0;
-  const tx = db.transaction(() => {
-    for (const station of data.stations) {
-      // Find or create substation
-      let sub = db.prepare('SELECT id FROM substations WHERE name = ?').get(station.name);
-      if (!sub) {
-        const r = db.prepare('INSERT INTO substations (name) VALUES (?)').run(station.name);
-        sub = { id: r.lastInsertRowid };
-      }
-      for (const ticket of station.tickets) {
-        let task = db.prepare('SELECT id FROM tasks WHERE substation_id = ? AND task_content = ?').get(sub.id, ticket.task);
-        if (!task) {
-          const r = db.prepare('INSERT INTO tasks (substation_id, task_content, category) VALUES (?, ?, ?)').run(sub.id, ticket.task, ticket.category || '');
-          task = { id: r.lastInsertRowid };
-        }
-        let order = 0;
-        for (const item of ticket.items) {
-          order++;
-          const existing = db.prepare('SELECT id FROM items WHERE task_id = ? AND item_content = ?').get(task.id, item);
-          if (!existing) {
-            db.prepare('INSERT INTO items (task_id, item_content, sort_order) VALUES (?, ?, ?)').run(task.id, item, order);
-            imported++;
-          }
-        }
-      }
-    }
-  });
-  tx();
-  audit('IMPORT', `导入 ${imported} 条操作项目`);
-  res.json({ success: true, imported });
-});
-
 // ===== 双通道校验：本地校验 + AI 校验（操作票术语 / 错漏字 / 逻辑 / 五防 / 规范性）=====
 const AI_PROVIDERS = {
   deepseek: { base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
@@ -1327,16 +1291,24 @@ async function validateWithAIAdvanced(taskContent, items, config, apiKey, prompt
   }
 }
 
-// --- Serve frontend ---
-app.get('*', (req, res) => {
+// --- Serve frontend（SPA 回退：除 /api/ 以外的 GET 请求返回 index.html；
+//     /api/ 路径放行，交由后续注册的各 API 路由处理，避免被通配符抢先拦截）---
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // ===== APK 分发（管理员上传，所有人可下载）=====
+// 注意：此处版本号需与前端 app.js 中的 APP_VERSION 保持一致（当前 V1.1.0）
+const APP_VERSION = 'V1.1.0';
 const APK_FILE = path.join(APK_DIR, 'ticket-system.apk');
 const APK_META = path.join(APK_DIR, 'meta.json');
 function apkMeta() {
   try { return JSON.parse(fs.readFileSync(APK_META, 'utf8')); } catch (_) { return null; }
+}
+// 对外展示/下载文件名：运维五班操作票系统_版本号.apk
+function apkDisplayName(version) {
+  return '运维五班操作票系统_' + (version || APP_VERSION) + '.apk';
 }
 
 app.get('/api/apk/info', (req, res) => {
@@ -1347,8 +1319,12 @@ app.get('/api/apk/info', (req, res) => {
 
 app.get('/api/apk/download', (req, res) => {
   if (!fs.existsSync(APK_FILE)) return res.status(404).json({ error: '暂无安装包' });
+  const m = apkMeta();
+  const version = (m && m.version) || APP_VERSION;
+  const dispName = apkDisplayName(version);
   res.type('application/vnd.android.package-archive');
-  res.set('Content-Disposition', 'attachment; filename="ticket-system.apk"');
+  // filename*=UTF-8'' 保证中文文件名在各浏览器（含 Chrome）正确显示
+  res.set('Content-Disposition', `attachment; filename="ticket-system.apk"; filename*=UTF-8''${encodeURIComponent(dispName)}`);
   res.sendFile(APK_FILE);
 });
 
@@ -1359,10 +1335,11 @@ app.post('/api/apk/upload', requireEdit, async (req, res) => {
     let buf;
     try { buf = Buffer.from(data, 'base64'); } catch (e) { return res.status(400).json({ error: '文件数据无效' }); }
     if (buf.length > 200 * 1024 * 1024) return res.status(400).json({ error: '文件过大（上限 200MB）' });
+    const ver = version || APP_VERSION; // 未填版本号时默认使用当前系统版本
     fs.writeFileSync(APK_FILE, buf);
-    const meta = { filename: filename || 'ticket-system.apk', version: version || '', note: note || '', size: buf.length, uploadedAt: new Date().toISOString() };
+    const meta = { filename: apkDisplayName(ver), version: ver, note: note || '', size: buf.length, uploadedAt: new Date().toISOString() };
     fs.writeFileSync(APK_META, JSON.stringify(meta, null, 2));
-    audit('APK_UPLOAD', '管理员上传了安卓安装包' + (version ? '（' + version + '）' : ''));
+    audit('APK_UPLOAD', '管理员上传了安卓安装包（' + apkDisplayName(ver) + '）');
     res.json({ ok: true, meta });
   } catch (e) { res.status(500).json({ error: '上传失败：' + e.message }); }
 });

@@ -53,7 +53,7 @@ npm start
 | GET | /api/tasks/:id/history | 查看整任务的修改历史 |
 | GET | /api/audit-log | 操作日志（需修改权限） |
 | GET | /api/integrity-check | 数据完整性检查（需修改权限） |
-| POST | /api/import | 从 JSON 导入现有数据 |
+| POST | /api/import-tickets | 从 TXT 批量导入操作票（需修改权限） |
 
 ## 部署到 Cloudflare
 

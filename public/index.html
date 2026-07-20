@@ -29,13 +29,12 @@
   <input type="text" id="searchInput" placeholder="搜索操作任务..." />
   <div id="exportUI" style="display:flex;gap:8px;align-items:center">
     <button class="btn btn-outline btn-sm" onclick="exportSelectedTasks()">⬇ 批量导出</button>
-    <button class="btn btn-outline btn-sm" onclick="selectAllVisible(true)">全选</button>
+    <button class="btn btn-outline btn-sm" onclick="toggleSelectAll()">全选</button>
     <button class="btn btn-outline btn-sm" onclick="selectAllVisible(false)">清空</button>
   </div>
   <div id="editorUI" style="display:none;gap:8px;align-items:center">
     <button class="btn btn-success btn-sm" onclick="showAddTaskModal()">＋ 新增操作票</button>
     <button class="btn btn-outline btn-sm" onclick="showImportTxtModal()">📥 导入TXT</button>
-    <button class="btn btn-outline btn-sm" onclick="importExistingData()">📥 导入已有库</button>
     <button class="btn btn-outline btn-sm" onclick="showManageModal()">⚙ 管理</button>
     <button class="btn btn-outline btn-sm" onclick="openReviewInbox()">📝 审核箱</button>
     <button class="btn btn-outline btn-sm" onclick="showAIConfigModal()">🤖 AI配置</button>
@@ -58,7 +57,7 @@
   <span class="footer-copyright">©2026 变电运维五班操作票系统 <span id="footerVersion">V1.0.0</span> · 变电运维五班 · 完全实况 · 保留所有权利 · 仅供变电运维五班内部使用</span>
   <span class="footer-links">
     <a href="javascript:void(0)" class="footer-link" onclick="showVersionModal()">版本记录</a>
-    <a href="/api/apk/download" class="footer-link" id="apkDownload" style="display:none">📱 下载安卓App</a>
+    <a href="javascript:void(0)" class="footer-link" id="apkDownload" style="display:none" onclick="downloadApk()">📱 下载安卓App</a>
   </span>
 </footer>
 

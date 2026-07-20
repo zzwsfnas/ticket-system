@@ -1,7 +1,7 @@
 // 变电运维五班操作票系统 - Service Worker
 // 作用：缓存前端壳（app shell），使主域名穿透链路完全中断时，
 // 已安装 PWA 的用户仍能从缓存加载页面并触发主备域名自动切换。
-const CACHE = 'ts-pwa-v2';
+const CACHE = 'ts-pwa-v3';
 const ASSETS = [
   '/',
   '/index.html',

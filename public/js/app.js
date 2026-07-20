@@ -392,8 +392,19 @@ function escapeHtml(t) {
 //   - 较大功能更新 → 中位 +1、末位置 0，如 V1.1.0
 //   - 重大版本升级 → 首位 +1、其余置 0，如 V2.0.0
 // 每次发版：修改 APP_VERSION，并在 APP_VERSION_HISTORY 顶部新增一条记录（最新在前）。
-const APP_VERSION = 'V1.0.0';
+const APP_VERSION = 'V1.1.0';
 const APP_VERSION_HISTORY = [
+  {
+    version: 'V1.1.0',
+    date: '2026-07-20',
+    level: 'minor',
+    changes: [
+      '修复 Chrome 浏览器批量导出 TXT 无法下载的问题（改用 fetch+blob 触发下载，兼容 Service Worker）',
+      '「全选」按钮改为点击切换：未全选时全选，已全选时取消全选',
+      '移除「导入已有库」功能',
+      '安卓安装包（APK）下载文件名改为「运维五班操作票系统_版本号.apk」，上传默认带入当前版本号'
+    ]
+  },
   {
     version: 'V1.0.0',
     date: '2026-07-19',
@@ -573,18 +584,45 @@ function selectAllVisible(checked) {
   toast(checked ? `已全选 ${n} 张操作票` : '已清空选择', 'info');
 }
 
-function exportSelectedTasks() {
+// 全选按钮：点击切换。未全选时全选，已全选时取消全选
+function toggleSelectAll() {
+  const all = Array.from(document.querySelectorAll('#taskContainer .task-select'));
+  if (all.length === 0) { toast('当前没有可勾选的操作票', 'info'); return; }
+  const allChecked = all.every(c => c.checked);
+  const next = !allChecked;
+  all.forEach(c => { c.checked = next; });
+  const n = all.filter(c => c.checked).length;
+  toast(next ? `已全选 ${n} 张操作票` : '已取消全选', 'info');
+}
+
+async function exportSelectedTasks() {
   const checks = Array.from(document.querySelectorAll('#taskContainer .task-select:checked'));
   if (checks.length === 0) { toast('请先勾选要导出的操作票', 'error'); return; }
   const ids = checks.map(c => parseInt(c.value));
   const ts = formatTs();
-  const a = document.createElement('a');
-  a.href = `/api/tasks/export?ids=${ids.join(',')}`;
-  a.download = `操作票典型票导出_${ts}.txt`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  toast(`正在导出 ${ids.length} 张操作票（TXT）...`, 'success');
+  const name = `操作票典型票导出_${ts}.txt`;
+  try {
+    toast(`正在导出 ${ids.length} 张操作票（TXT）...`, 'info');
+    // 关键修复：Chrome 下通过 Service Worker 返回的 attachment 响应 + <a download> 组合不会触发下载。
+    // 改用 fetch 取 blob，再用 blob: objectURL 触发下载（objectURL 不经过 SW），各浏览器均可靠。
+    const resp = await fetch(`/api/tasks/export?ids=${ids.join(',')}`, { cache: 'no-store', credentials: 'same-origin' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || ('HTTP ' + resp.status));
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast(`已导出 ${ids.length} 张操作票`, 'success');
+  } catch (e) {
+    toast('导出失败：' + e.message, 'error');
+  }
 }
 
 // --- 编辑操作项目 ---
@@ -1480,7 +1518,7 @@ async function loadApkTab() {
         <div class="apk-form">
           <label>APK 文件：<input type="file" id="apkFile" accept=".apk" style="margin:6px 0"></label>
           <div style="display:flex;gap:8px;margin-top:6px">
-            <input type="text" id="apkVersion" placeholder="版本号（如 V1.0.0，可选）" style="flex:1">
+            <input type="text" id="apkVersion" value="${APP_VERSION}" placeholder="版本号（自动填入当前版本，可修改）" style="flex:1">
             <input type="text" id="apkNote" placeholder="备注（可选）" style="flex:1">
           </div>
           <div style="margin-top:10px;display:flex;gap:8px">
@@ -1527,6 +1565,26 @@ async function refreshApkDownload() {
     const el = document.getElementById('apkDownload');
     if (el) el.style.display = info.available ? 'inline' : 'none';
   } catch (_) {}
+}
+
+// 主页「📱 下载安卓App」：用 fetch+blob 触发下载（避免 SW 致 Chrome 不下载），文件名含版本号
+async function downloadApk() {
+  try {
+    const info = await API.get('/api/apk/info');
+    if (!info.available) { toast('暂无可下载的安装包', 'error'); return; }
+    toast('正在下载安装包...', 'info');
+    const resp = await fetch('/api/apk/download', { cache: 'no-store', credentials: 'same-origin' });
+    if (!resp.ok) throw new Error('下载失败（' + resp.status + '）');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = info.filename || ('运维五班操作票系统' + (APP_VERSION ? '_' + APP_VERSION : '') + '.apk');
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e) { toast('下载失败：' + e.message, 'error'); }
 }
 
 async function loadManageTickets(subId) {
@@ -1759,43 +1817,6 @@ async function submitTxtImport() {
     toast(msg, 'success');
     await loadTasks(state.currentSubstationId);
   } catch (e) { toast('导入失败：' + e.message, 'error'); }
-}
-
-// ===== 导入已有 JSON 库 =====
-function importExistingData() {
-  if (!state.isEditor) { toast('需要修改权限', 'error'); return; }
-  openModal(`
-    <div class="modal-header"><h3>导入 JSON 数据</h3><button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="modal-body">
-      <label>请粘贴 all_typical.json 的内容，或选择 JSON 文件上传</label>
-      <textarea id="importJsonData" rows="10" placeholder='例如：{"stations": [...]}' style="font-family:monospace;font-size:12px"></textarea>
-      <input type="file" id="importFileInput" accept=".json" onchange="readImportFile(event)">
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" onclick="submitImport()">确认导入</button>
-    </div>
-  `);
-}
-function readImportFile(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => { document.getElementById('importJsonData').value = e.target.result; };
-  reader.readAsText(file, 'UTF-8');
-}
-async function submitImport() {
-  const raw = document.getElementById('importJsonData').value.trim();
-  if (!raw) { toast('请粘贴或上传 JSON 数据', 'error'); return; }
-  let data;
-  try { data = JSON.parse(raw); } catch (e) { toast('JSON 格式错误', 'error'); return; }
-  try {
-    const r = await API.post('/api/import', { data });
-    toast(`导入完成: ${r.imported} 条操作项目`, 'success');
-    closeModal();
-    await loadSubstations();
-    await loadTasks(state.currentSubstationId);
-  } catch (e) { toast('导入失败: ' + e.message, 'error'); }
 }
 
 // --- Event Handlers ---
