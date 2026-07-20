@@ -1291,14 +1291,8 @@ async function validateWithAIAdvanced(taskContent, items, config, apiKey, prompt
   }
 }
 
-// --- Serve frontend（SPA 回退：除 /api/ 以外的 GET 请求返回 index.html；
-//     /api/ 路径放行，交由后续注册的各 API 路由处理，避免被通配符抢先拦截）---
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api/')) return next();
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
-});
-
 // ===== APK 分发（管理员上传，所有人可下载）=====
+// ⚠️ 必须注册在 SPA 回退 app.get('*') 之前，否则 GET 路由被通配符抢先拦截返回 HTML
 // 注意：此处版本号需与前端 app.js 中的 APP_VERSION 保持一致（当前 V1.1.1）
 const APP_VERSION = 'V1.1.1';
 const APK_FILE = path.join(APK_DIR, 'ticket-system.apk');
@@ -1351,6 +1345,11 @@ app.delete('/api/apk', requireEdit, (req, res) => {
     audit('APK_DELETE', '管理员删除了安卓安装包');
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: '删除失败：' + e.message }); }
+});
+
+// --- Serve frontend（SPA 回退：除 /api/ 以外的 GET 请求返回 index.html）---
+app.get('*', (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // --- Start (端口占用自动递增，最多尝试10个端口) ---
