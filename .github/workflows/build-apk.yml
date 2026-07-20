@@ -57,10 +57,23 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease
 
+      - name: List all APKs in android directory
+        run: |
+          echo "=== All .apk files ==="
+          find android -name "*.apk" -type f || true
+          echo "=== Build outputs tree ==="
+          ls -laR android/app/build/outputs/ 2>/dev/null || echo "(no outputs dir)"
+
       - name: Find APK file
         id: find_apk
-        working-directory: android
-        run: echo "APK_PATH=$(find . -path '*/release/*.apk' -type f | head -1)" >> "$GITHUB_OUTPUT"
+        run: |
+          APK=$(find android -name "*.apk" -type f | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK found! Check build output above."
+            exit 1
+          fi
+          echo "Found APK: $APK"
+          echo "APK_PATH=$APK" >> "$GITHUB_OUTPUT"
 
       - name: Create / update tag apk-latest
         run: |
