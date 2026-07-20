@@ -52,6 +52,29 @@ jobs:
           echo "RELEASE_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> local.properties
           echo "RELEASE_STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> local.properties
           chmod +x gradlew
+          # 默认 `npx cap add android` 生成的 build.gradle 不会把 release 指向我们的 keystore，
+          # 导致 assembleRelease 产出「未签名」APK -> 手机安装报「解析软件包出现问题」。
+          # 这里注入 release 签名配置并强制 v1+v2（v1 兼容 Android 6 及以下/部分国产 ROM）。
+          python3 - <<'PY'
+          import re
+          f = 'app/build.gradle'
+          s = open(f).read()
+          if 'signingConfigs.release' not in s:
+              s = re.sub(r'(signingConfigs\s*\{)',
+                         r'\1\n        release {\n            storeFile file(RELEASE_STORE_FILE)\n            storePassword RELEASE_STORE_PASSWORD\n            keyAlias RELEASE_KEY_ALIAS\n            keyPassword RELEASE_KEY_PASSWORD\n        }',
+                         s, count=1)
+          if 'signingConfig signingConfigs.release' not in s:
+              s = re.sub(r'(buildTypes\s*\{\s*release\s*\{)',
+                         r'\1\n            signingConfig signingConfigs.release', s, flags=re.S, count=1)
+          else:
+              s = re.sub(r'(buildTypes\s*\{\s*release\s*\{[^}]*?)signingConfig signingConfigs\.debug',
+                         r'\1signingConfig signingConfigs.release', s, flags=re.S, count=1)
+          if 'v1SigningEnabled' not in s:
+              s = re.sub(r'(buildTypes\s*\{\s*release\s*\{)',
+                         r'\1\n            v1SigningEnabled true\n            v2SigningEnabled true', s, flags=re.S, count=1)
+          open(f, 'w').write(s)
+          print("patched build.gradle: release signingConfig + v1/v2 enabled")
+          PY
 
       - name: Build release APK
         working-directory: android
@@ -74,6 +97,27 @@ jobs:
           fi
           echo "Found APK: $APK"
           echo "APK_PATH=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK is signed
+        run: |
+          APK=$(find android -name "*.apk" -type f | head -1)
+          export APK
+          python3 - <<'PY'
+          import zipfile, os, sys
+          p = os.environ['APK']
+          z = zipfile.ZipFile(p)
+          names = z.namelist()
+          v1 = any(n.startswith('META-INF/') and (n.endswith('.RSA') or n.endswith('.DSA') or n.endswith('.EC')) for n in names)
+          data = open(p, 'rb').read()
+          v2 = data.find(b'APK Sig Block 42') != -1
+          print("APK:", p)
+          print("v1 signature (META-INF/*.RSA):", v1)
+          print("v2/v3 signing block:", v2)
+          if not (v1 or v2):
+              print("::error::APK is NOT signed -> Android will fail with 'parse package' error. Aborting release.")
+              sys.exit(1)
+          print("OK: APK is properly signed.")
+          PY
 
       - name: Create / update tag apk-latest
         run: |
