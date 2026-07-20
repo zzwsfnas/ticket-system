@@ -59,19 +59,21 @@ jobs:
           import re
           f = 'app/build.gradle'
           s = open(f).read()
+          # 1) 注入 signingConfigs.release 块（v1/v2 属于 SigningConfig DSL，不是 BuildType）
           if 'signingConfigs.release' not in s:
               s = re.sub(r'(signingConfigs\s*\{)',
-                         r'\1\n        release {\n            storeFile file(RELEASE_STORE_FILE)\n            storePassword RELEASE_STORE_PASSWORD\n            keyAlias RELEASE_KEY_ALIAS\n            keyPassword RELEASE_KEY_PASSWORD\n        }',
+                         r'\1\n        release {\n            storeFile file(RELEASE_STORE_FILE)\n            storePassword RELEASE_STORE_PASSWORD\n            keyAlias RELEASE_KEY_ALIAS\n            keyPassword RELEASE_KEY_PASSWORD\n            v1SigningEnabled true\n            v2SigningEnabled true\n        }',
                          s, count=1)
-          if 'signingConfig signingConfigs.release' not in s:
+          else:
+              if 'v1SigningEnabled' not in s:
+                  s = re.sub(r'(signingConfigs\.release\s*\{)',
+                             r'\1\n            v1SigningEnabled true\n            v2SigningEnabled true', s, flags=re.S, count=1)
+          # 2) release buildType 指向 signingConfigs.release（替换 debug 引用，避免重复 signingConfig）
+          s, n = re.subn(r'(buildTypes\s*\{\s*release\s*\{[^}]*?)signingConfig signingConfigs\.debug',
+                         r'\1signingConfig signingConfigs.release', s, flags=re.S)
+          if n == 0:
               s = re.sub(r'(buildTypes\s*\{\s*release\s*\{)',
                          r'\1\n            signingConfig signingConfigs.release', s, flags=re.S, count=1)
-          else:
-              s = re.sub(r'(buildTypes\s*\{\s*release\s*\{[^}]*?)signingConfig signingConfigs\.debug',
-                         r'\1signingConfig signingConfigs.release', s, flags=re.S, count=1)
-          if 'v1SigningEnabled' not in s:
-              s = re.sub(r'(buildTypes\s*\{\s*release\s*\{)',
-                         r'\1\n            v1SigningEnabled true\n            v2SigningEnabled true', s, flags=re.S, count=1)
           open(f, 'w').write(s)
           print("patched build.gradle: release signingConfig + v1/v2 enabled")
           PY
