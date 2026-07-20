@@ -1347,6 +1347,19 @@ app.delete('/api/apk', requireEdit, (req, res) => {
   } catch (e) { res.status(500).json({ error: '删除失败：' + e.message }); }
 });
 
+// ===== 部署诊断接口（务必注册在 SPA 回退之前）=====
+// 用途：部署后用浏览器直接访问  https://你的域名/api/version
+//   - 返回 JSON（含 version 字段）= 服务端已是新代码，问题在前端缓存，清缓存刷新即可
+//   - 返回 HTML（<！DOCTYPE html>）= 服务端仍是旧代码，说明镜像未重建，需 docker compose up -d --build
+app.get('/api/version', (req, res) => {
+  res.json({
+    version: APP_VERSION,
+    apkRoutesBeforeSpa: true,
+    swStrategy: 'network-first',
+    note: '若本接口返回 HTML 而非 JSON，说明服务端在跑旧代码，请重建镜像(docker compose up -d --build)'
+  });
+});
+
 // --- Serve frontend（SPA 回退：除 /api/ 以外的 GET 请求返回 index.html）---
 app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
