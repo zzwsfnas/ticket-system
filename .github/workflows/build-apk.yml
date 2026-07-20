@@ -47,36 +47,52 @@ jobs:
       - name: Configure gradle signing
         working-directory: android
         run: |
-          echo "RELEASE_STORE_FILE=release.keystore" > local.properties
-          echo "RELEASE_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> local.properties
-          echo "RELEASE_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> local.properties
-          echo "RELEASE_STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> local.properties
           chmod +x gradlew
-          # 默认 `npx cap add android` 生成的 build.gradle 不会把 release 指向我们的 keystore，
-          # 导致 assembleRelease 产出「未签名」APK -> 手机安装报「解析软件包出现问题」。
-          # 这里注入 release 签名配置并强制 v1+v2（v1 兼容 Android 6 及以下/部分国产 ROM）。
+          # 把签名凭据写入 keystore.properties（rootProject = android/），由 build.gradle 显式加载。
+          # 注意：local.properties 里的自定义键不会自动变成 Gradle 属性，故必须用独立 properties 文件。
+          cat > keystore.properties <<EOF
+          storeFile=release.keystore
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+          # 默认 `npx cap add android` 生成的 app/build.gradle 没有 signingConfigs 块，
+          # 且 release 未指向 keystore -> assembleRelease 产出「未签名」APK ->
+          # 手机安装报「解析软件包出现问题(33) packageInfo is null」。
+          # 这里确定性地注入 signingConfigs.release（含 v1+v2；v1 兼容 Android 6 及部分国产 ROM），
+          # 并让 buildTypes.release 使用它。build.gradle 只含 keystoreProps 引用，无明文密钥。
           python3 - <<'PY'
           import re
           f = 'app/build.gradle'
           s = open(f).read()
-          # 1) 注入 signingConfigs.release 块（v1/v2 属于 SigningConfig DSL，不是 BuildType）
-          if 'signingConfigs.release' not in s:
-              s = re.sub(r'(signingConfigs\s*\{)',
-                         r'\1\n        release {\n            storeFile file(RELEASE_STORE_FILE)\n            storePassword RELEASE_STORE_PASSWORD\n            keyAlias RELEASE_KEY_ALIAS\n            keyPassword RELEASE_KEY_PASSWORD\n            v1SigningEnabled true\n            v2SigningEnabled true\n        }',
-                         s, count=1)
-          else:
-              if 'v1SigningEnabled' not in s:
-                  s = re.sub(r'(signingConfigs\.release\s*\{)',
-                             r'\1\n            v1SigningEnabled true\n            v2SigningEnabled true', s, flags=re.S, count=1)
-          # 2) release buildType 指向 signingConfigs.release（替换 debug 引用，避免重复 signingConfig）
-          s, n = re.subn(r'(buildTypes\s*\{\s*release\s*\{[^}]*?)signingConfig signingConfigs\.debug',
-                         r'\1signingConfig signingConfigs.release', s, flags=re.S)
-          if n == 0:
+          # 0) 在 android { 之前注入 keystore.properties 加载器
+          if 'keystoreProps' not in s:
+              loader = ("def keystorePropsFile = rootProject.file(\"keystore.properties\")\n"
+                        "def keystoreProps = new Properties()\n"
+                        "keystoreProps.load(new FileInputStream(keystorePropsFile))\n\n")
+              s = re.sub(r'(^|\n)(android\s*\{)', r'\1' + loader + r'\2', s, count=1)
+          # 1) 在 android { 之后确定性地注入 signingConfigs.release（不依赖已有块）
+          if 'signingConfigs' not in s:
+              block = ("\n    signingConfigs {\n"
+                       "        release {\n"
+                       "            storeFile file(keystoreProps['storeFile'])\n"
+                       "            storePassword keystoreProps['storePassword']\n"
+                       "            keyAlias keystoreProps['keyAlias']\n"
+                       "            keyPassword keystoreProps['keyPassword']\n"
+                       "            v1SigningEnabled true\n"
+                       "            v2SigningEnabled true\n"
+                       "        }\n"
+                       "    }\n")
+              s = re.sub(r'(android\s*\{)', r'\1' + block, s, count=1)
+          # 2) buildTypes.release 使用该签名配置
+          if 'signingConfig signingConfigs.release' not in s:
               s = re.sub(r'(buildTypes\s*\{\s*release\s*\{)',
                          r'\1\n            signingConfig signingConfigs.release', s, flags=re.S, count=1)
           open(f, 'w').write(s)
-          print("patched build.gradle: release signingConfig + v1/v2 enabled")
+          print("patched build.gradle: keystore loader + signingConfigs.release + v1/v2 enabled")
           PY
+          echo "===== effective app/build.gradle (no secrets, only keystoreProps refs) ====="
+          cat app/build.gradle
 
       - name: Build release APK
         working-directory: android
