@@ -1,7 +1,7 @@
 // 变电运维五班操作票系统 - Service Worker
 // 作用：缓存前端壳（app shell），使主域名穿透链路完全中断时，
 // 已安装 PWA 的用户仍能从缓存加载页面并触发主备域名自动切换。
-const CACHE = 'ts-pwa-v1';
+const CACHE = 'ts-pwa-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -27,11 +27,16 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET') return;
+  if (req.method !== 'GET') return;                 // 非 GET（POST/PUT/DELETE）直接放行
 
   const url = new URL(req.url);
-  // 只处理同源静态资源；API 请求与跨域请求放行，不做缓存
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin) return;   // 跨域请求放行
+
+  // API 请求：始终走网络，绝不缓存 —— 这是修复「保存后重新进入显示旧值」的关键
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(req));
+    return;
+  }
 
   // 页面导航：网络优先，失败回退到缓存的 index.html（关键容灾逻辑）
   if (req.mode === 'navigate') {

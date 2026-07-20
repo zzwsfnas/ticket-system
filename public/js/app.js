@@ -14,7 +14,7 @@ let state = {
 let txtTicketsBuffer = [];
 
 const API = {
-  async get(url) { const r = await fetch(url); return r.json(); },
+  async get(url) { const r = await fetch(url, { cache: 'no-store' }); return r.json(); },
   async post(url, body) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || '请求失败'); }
