@@ -9,11 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # 创建 Git 标签 + 发布 Release 需要
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # 需要完整历史才能创建 tag
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -32,10 +32,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install Capacitor (no-save, 不污染 package.json)
+      - name: Install Capacitor
         run: npm install --no-save @capacitor/cli@5 @capacitor/core@5 @capacitor/android@5
 
-      - name: Add Android platform (首次)
+      - name: Add Android platform
         run: npx cap add android || true
 
       - name: Sync Capacitor
@@ -62,9 +62,6 @@ jobs:
         working-directory: android
         run: echo "APK_PATH=$(find . -path '*/release/*.apk' -type f | head -1)" >> "$GITHUB_OUTPUT"
 
-      - name: Show APK info
-        run: echo "APK found at: ${{ steps.find_apk.outputs.APK_PATH }}"
-
       - name: Create / update tag apk-latest
         run: |
           git config user.name "github-actions[bot]"
@@ -72,16 +69,16 @@ jobs:
           git tag -f apk-latest
           git push origin apk-latest --force || true
 
-      - name: Publish to GitHub Release (apk-latest)
+      - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest
-          name: 安卓安装包（最新）
+          release_name: "APK Latest"
           body: |
-            ## 运维五班操作票系统 安卓安装包
-            **自动构建时间：** ${{ github.run_number }}
-            **提交：** ${{ github.sha }}
-            > 下载后在安卓设备上安装即可（需允许「未知来源」应用）。
+            ## Ticket System Android APK
+            **Build:** #${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+            Download and install on any Android device.
           files: ${{ steps.find_apk.outputs.APK_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
