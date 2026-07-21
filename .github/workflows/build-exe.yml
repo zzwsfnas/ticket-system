@@ -1,0 +1,60 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build EXE with pkg
+        # 必须在 Windows runner 上构建：better-sqlite3 为原生模块，
+        # 需匹配 win-x64 二进制（交叉编译会产出无法运行的 exe）。
+        run: node node_modules/@yao-pkg/pkg/lib-es5/bin.js . --target node22-win-x64 --output dist/ticket-system.exe
+
+      - name: Verify EXE exists
+        run: |
+          if (!(Test-Path dist/ticket-system.exe)) { throw "EXE not built" }
+          $sz = (Get-Item dist/ticket-system.exe).Length / 1MB
+          Write-Host ("EXE built, size: " + $sz.ToString('F1') + " MB")
+
+      - name: Create / update tag exe-latest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f exe-latest
+          git push origin exe-latest --force || true
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: exe-latest
+          release_name: "EXE Latest (Windows 单机版)"
+          body: |
+            ## 变电运维五班操作票典型票系统 — Windows 桌面单机版
+            **Build:** #${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+
+            下载 `变电运维五班操作票典型票系统.exe` 后，放入现有程序目录，
+            **仅替换 exe、保留 data 文件夹**即可升级，数据不变。
+          files: dist/ticket-system.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
