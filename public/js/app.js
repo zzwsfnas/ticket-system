@@ -187,7 +187,6 @@ function renderStationSelect() {
 // --- 变电站管理（仅管理员）：新增 / 改名 / 删除 ---
 function showStationManage() {
   if (!state.isEditor) { toast('需要修改权限', 'error'); return; }
-  renderStationManageList();
   openModal(`
     <div class="modal-header"><h3>变电站管理</h3><button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="modal-body">
@@ -202,6 +201,7 @@ function showStationManage() {
       <button class="btn btn-outline" onclick="closeModal()">关闭</button>
     </div>
   `);
+  renderStationManageList();
   setTimeout(() => document.getElementById('newStationName')?.focus(), 100);
 }
 
