@@ -308,6 +308,53 @@ app.get('/api/substations', (req, res) => {
   res.json(list);
 });
 
+// 变电站写接口（仅管理员 requireEdit）：新增 / 改名 / 删除
+function findStationById(id) {
+  return db.prepare('SELECT * FROM substations WHERE id = ?').get(id);
+}
+
+app.post('/api/substations', requireEdit, (req, res) => {
+  const name = ((req.body && req.body.name) || '').trim();
+  if (!name) return res.status(400).json({ error: '变电站名称不能为空' });
+  try {
+    const result = db.prepare('INSERT INTO substations (name) VALUES (?)').run(name);
+    audit('ADD_SUBSTATION', name);
+    res.json(db.prepare('SELECT * FROM substations WHERE id = ?').get(result.lastInsertRowid));
+  } catch (e) {
+    if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: '变电站已存在' });
+    return res.status(500).json({ error: '新增失败：' + e.message });
+  }
+});
+
+app.put('/api/substations/:id', requireEdit, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const name = ((req.body && req.body.name) || '').trim();
+  if (!id) return res.status(400).json({ error: '无效的变电站' });
+  if (!name) return res.status(400).json({ error: '变电站名称不能为空' });
+  const existing = findStationById(id);
+  if (!existing) return res.status(404).json({ error: '变电站不存在' });
+  try {
+    db.prepare('UPDATE substations SET name = ? WHERE id = ?').run(name, id);
+    audit('RENAME_SUBSTATION', `${existing.name} -> ${name}`);
+    res.json(findStationById(id));
+  } catch (e) {
+    if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: '变电站名称已存在' });
+    return res.status(500).json({ error: '改名失败：' + e.message });
+  }
+});
+
+app.delete('/api/substations/:id', requireEdit, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: '无效的变电站' });
+  const existing = findStationById(id);
+  if (!existing) return res.status(404).json({ error: '变电站不存在' });
+  const cnt = db.prepare('SELECT COUNT(*) n FROM tasks WHERE substation_id = ?').get(id).n;
+  if (cnt > 0) return res.status(409).json({ error: `该变电站下还有 ${cnt} 张操作票，无法删除（请先迁移或删除相关操作票）` });
+  db.prepare('DELETE FROM substations WHERE id = ?').run(id);
+  audit('DELETE_SUBSTATION', existing.name);
+  res.json({ success: true });
+});
+
 // --- Tasks ---
 app.get('/api/tasks', (req, res) => {
   const { substation_id } = req.query;
@@ -1301,8 +1348,8 @@ async function validateWithAIAdvanced(taskContent, items, config, apiKey, prompt
 
 // ===== APK 分发（管理员上传，所有人可下载）=====
 // ⚠️ 必须注册在 SPA 回退 app.get('*') 之前，否则 GET 路由被通配符抢先拦截返回 HTML
-// 注意：此处版本号需与前端 app.js 中的 APP_VERSION 保持一致（当前 V1.1.1）
-const APP_VERSION = 'V1.1.1';
+// 注意：此处版本号需与前端 app.js 中的 APP_VERSION 保持一致（当前 V1.2.0）
+const APP_VERSION = 'V1.2.0';
 const APK_FILE = path.join(APK_DIR, 'ticket-system.apk');
 const APK_META = path.join(APK_DIR, 'meta.json');
 function apkMeta() {

@@ -111,12 +111,14 @@ function renderAuthUI() {
   const badge = document.getElementById('authBadge');
   const btn = document.getElementById('authBtn');
   const editorUI = document.getElementById('editorUI');
+  const addStationBtn = document.getElementById('addStationBtn');
   if (state.isEditor) {
     badge.className = 'auth-badge editor';
     badge.innerHTML = '🔒 修改模式';
     btn.textContent = '退出修改';
     btn.onclick = logout;
     editorUI.style.display = 'flex';
+    if (addStationBtn) addStationBtn.style.display = '';
     document.body.classList.add('editing');
   } else {
     badge.className = 'auth-badge viewer';
@@ -124,6 +126,7 @@ function renderAuthUI() {
     btn.textContent = '验证密码';
     btn.onclick = showLoginModal;
     editorUI.style.display = 'none';
+    if (addStationBtn) addStationBtn.style.display = 'none';
     document.body.classList.remove('editing');
   }
 }
@@ -179,6 +182,91 @@ function renderStationSelect() {
     html += `<option value="${s.id}" ${s.id == state.currentSubstationId ? 'selected' : ''}>${s.name}</option>`;
   }
   sel.innerHTML = html;
+}
+
+// --- 变电站管理（仅管理员）：新增 / 改名 / 删除 ---
+function showStationManage() {
+  if (!state.isEditor) { toast('需要修改权限', 'error'); return; }
+  renderStationManageList();
+  openModal(`
+    <div class="modal-header"><h3>变电站管理</h3><button class="modal-close" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <input type="text" id="newStationName" placeholder="输入新变电站名称" style="flex:1"
+               onkeydown="if(event.key==='Enter')addStation()">
+        <button class="btn btn-primary btn-sm" onclick="addStation()">＋ 新增</button>
+      </div>
+      <div id="stationManageList"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">关闭</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('newStationName')?.focus(), 100);
+}
+
+function renderStationManageList() {
+  const box = document.getElementById('stationManageList');
+  if (!box) return;
+  if (!state.substations.length) {
+    box.innerHTML = '<div style="color:var(--text-secondary);padding:8px 0">暂无变电站</div>';
+    return;
+  }
+  box.innerHTML = state.substations.map(s => `
+    <div class="station-manage-row" data-id="${s.id}">
+      <span class="station-name">${escapeHtml(s.name)}</span>
+      <span class="station-actions">
+        <button class="btn btn-outline btn-sm" onclick="renameStation(${s.id})">改名</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteStation(${s.id})">删除</button>
+      </span>
+    </div>
+  `).join('');
+}
+
+async function addStation() {
+  if (!state.isEditor) { toast('需要修改权限', 'error'); return; }
+  const input = document.getElementById('newStationName');
+  const name = (input.value || '').trim();
+  if (!name) { toast('请输入变电站名称', 'error'); return; }
+  if (state.substations.some(s => s.name === name)) { toast('变电站已存在', 'error'); return; }
+  try {
+    const row = await API.post('/api/substations', { name });
+    state.currentSubstationId = row.id;
+    await loadSubstations();
+    await loadTasks(row.id);
+    renderStationManageList();
+    input.value = '';
+    toast('已新增变电站：' + name, 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function renameStation(id) {
+  if (!state.isEditor) { toast('需要修改权限', 'error'); return; }
+  const cur = state.substations.find(s => s.id === id);
+  const name = prompt('修改变电站名称：', cur ? cur.name : '');
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) { toast('名称不能为空', 'error'); return; }
+  try {
+    await API.put('/api/substations/' + id, { name: trimmed });
+    await loadSubstations();
+    if (state.currentSubstationId === id) await loadTasks(id);
+    renderStationManageList();
+    toast('已改名', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteStation(id) {
+  if (!state.isEditor) { toast('需要修改权限', 'error'); return; }
+  const cur = state.substations.find(s => s.id === id);
+  if (!confirm('确定删除变电站「' + (cur ? cur.name : id) + '」？\n（该站下若有操作票将被拦截）')) return;
+  try {
+    await API.delete('/api/substations/' + id);
+    if (state.currentSubstationId === id) { state.currentSubstationId = null; await loadTasks(null); }
+    await loadSubstations();
+    renderStationManageList();
+    toast('已删除', 'success');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 function renderTaskList() {
@@ -406,8 +494,18 @@ function escapeHtml(t) {
 //   - 较大功能更新 → 中位 +1、末位置 0，如 V1.1.0
 //   - 重大版本升级 → 首位 +1、其余置 0，如 V2.0.0
 // 每次发版：修改 APP_VERSION，并在 APP_VERSION_HISTORY 顶部新增一条记录（最新在前）。
-const APP_VERSION = 'V1.1.1';
+const APP_VERSION = 'V1.2.0';
 const APP_VERSION_HISTORY = [
+  {
+    version: 'V1.2.0',
+    date: '2026-07-21',
+    level: 'minor',
+    changes: [
+      '新增「变电站管理」功能（仅管理员）：顶部变电站下拉旁 ➕ 按钮，可新增 / 改名 / 删除变电站',
+      '新增变电站后自动加入所有下拉框并自动选中，删除有操作票的变电站会被拦截',
+      '安卓 App 无需重做：APK 为远程加载 FNOS 服务器，部署后自动生效'
+    ]
+  },
   {
     version: 'V1.1.1',
     date: '2026-07-20',

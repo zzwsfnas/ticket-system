@@ -312,6 +312,29 @@ body {
   justify-content: flex-end;
 }
 
+/* 变电站管理列表 */
+.station-manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  background: var(--bg-secondary, #f7f8fa);
+}
+.station-manage-row .station-name {
+  font-weight: 600;
+  word-break: break-all;
+}
+.station-manage-row .station-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.icon-btn { padding: 4px 8px; line-height: 1; }
+
 /* Version Diff */
 .diff-view { margin-top: 8px; }
 .diff-entry {
